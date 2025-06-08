@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.metrics import silhouette_score
 from scipy.special import gammaln
 from grader import score
 
@@ -14,7 +15,7 @@ def poisson_logpmf(X, lambdas):
     for lam in lambdas:
         log_p = X * np.log(lam) - lam - gammaln(X + 1)
         log_probs.append(np.sum(log_p, axis=1))
-    return np.stack(log_probs, axis=1)  # (N, k)
+    return np.stack(log_probs, axis=1)
 
 
 def fit_poisson_mixture(X, k, max_iter=50, tol=1e-4, init_labels=None, seed=42):
@@ -34,7 +35,7 @@ def fit_poisson_mixture(X, k, max_iter=50, tol=1e-4, init_labels=None, seed=42):
             lambdas[j] = np.mean(X, axis=0) + 1e-3
             pis[j] = 1.0 / k
     prev_ll = None
-    for i in range(max_iter):
+    for _ in range(max_iter):
         log_probs = poisson_logpmf(X, lambdas) + np.log(pis + 1e-12)
         log_sum = np.logaddexp.reduce(log_probs, axis=1, keepdims=True)
         resp = np.exp(log_probs - log_sum)
@@ -42,40 +43,52 @@ def fit_poisson_mixture(X, k, max_iter=50, tol=1e-4, init_labels=None, seed=42):
         pis = Nk / N
         lambdas = (resp.T @ X) / (Nk[:, None] + 1e-12) + 1e-3
         ll = np.sum(log_sum)
-        if prev_ll is not None and np.abs(ll - prev_ll) < tol:
+        if prev_ll is not None and abs(ll - prev_ll) < tol:
             break
         prev_ll = ll
     labels = resp.argmax(axis=1)
-    return labels, lambdas, pis
+    return labels
 
 
-def cluster_file(path, n_dims):
+def cluster_file(path, n_dims, silhouette_samples=10000):
     k = 4 * n_dims - 1
-    print(f"Processing {path} with k={k} clusters...")
-    df = pd.read_csv(path).drop(columns=["id"])
+    print("Processing {} with k={}...".format(path, k))
+    df = pd.read_csv(path)
+    if "id" in df.columns:
+        df = df.drop(columns=["id"])
     X = df.values
-    # Preprocessing for KMeans
     X_log = np.log1p(X)
     X_scaled = StandardScaler().fit_transform(X_log)
     km = MiniBatchKMeans(n_clusters=k, n_init=100, batch_size=1000, random_state=42)
     km_labels = km.fit_predict(X_scaled)
-    # Poisson Mixture refinement in original count space
-    labels, _, _ = fit_poisson_mixture(
-        X, k, max_iter=50, tol=1e-4, init_labels=km_labels
-    )
-    return labels
+    sample_idx = None
+    if X_scaled.shape[0] > silhouette_samples:
+        rng = np.random.RandomState(42)
+        sample_idx = rng.choice(X_scaled.shape[0], silhouette_samples, replace=False)
+    if sample_idx is not None:
+        sil_before = silhouette_score(X_scaled[sample_idx], km_labels[sample_idx])
+    else:
+        sil_before = silhouette_score(X_scaled, km_labels)
+    labels = fit_poisson_mixture(X, k, init_labels=km_labels)
+    if sample_idx is not None:
+        sil_after = silhouette_score(X_scaled[sample_idx], labels[sample_idx])
+    else:
+        sil_after = silhouette_score(X_scaled, labels)
+    return labels, sil_before, sil_after
 
 
 if __name__ == "__main__":
-    # Public dataset
-    public_labels = cluster_file("public_data.csv", 4)
+    public_labels, sil_b, sil_a = cluster_file("public_data.csv", 4)
     pd.DataFrame({"id": range(len(public_labels)), "label": public_labels}).to_csv(
         "public_submission.csv", index=False
     )
-    print(f"Public Score: {score(public_labels.tolist()):.4f}")
+    print("Public silhouette before EM: {:.4f}".format(sil_b))
+    print("Public silhouette after EM: {:.4f}".format(sil_a))
+    print("Public Score: {:.4f}".format(score(public_labels.tolist())))
 
-    # # Private dataset (uncomment if needed)
-    # private_labels = cluster_file("private_data.csv", 6)
-    # pd.DataFrame({"id": range(len(private_labels)), "label": private_labels}).to_csv(
-    #     "private_submission.csv", index=False
-    # )
+    private_labels, sil_pb, sil_pa = cluster_file("private_data.csv", 6)
+    pd.DataFrame({"id": range(len(private_labels)), "label": private_labels}).to_csv(
+        "private_submission.csv", index=False
+    )
+    print("Private silhouette before EM: {:.4f}".format(sil_pb))
+    print("Private silhouette after EM: {:.4f}".format(sil_pa))

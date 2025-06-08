@@ -63,6 +63,7 @@ coverage.xml
 
 # Data files
 *.csv
+*.png
 
 # Ignore private and public submissions
 data/
