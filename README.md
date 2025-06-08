@@ -1,16 +1,35 @@
-# Final-Project-Big-Data
+# Big Data Clustering
 
-## CSV Format
-**public_submission.csv**
+## Requirements
+
+- Python 3.10
+- Install all required packages using the provided requirements.txt file:
+
 ```
-id,label
-1,0
-2,0
-...
+pip install -r requirements.txt
 ```
 
+## Usage
 
-## How to grade?
-1. Modify `public_submission.csv`.
-2. Push your file to this repository (`git push`).
-3. Wait for the outcome of git action.
+1. **Generate cluster submissions**  
+   ```
+   python cluster_and_submit.py
+   ```
+
+2. **Create analysis visualizations**  
+   ```
+   python analysis_visualization.py
+   ```
+
+3. **Generate report**  
+   This will create `Clustering_Report.docx` and `README.md` in the working directory:
+   ```
+   # The report is generated automatically by the above scripts
+   ```
+
+## Files
+
+- `cluster_and_submit.py`: Clustering pipeline with Poisson-EM refinement.  
+- `analysis_visualization.py`: Scripts to produce scatter plots, PCA/t-SNE, silhouette curves, and stability heatmap.  
+- `Clustering_Report.docx`: This report document.  
+- `README.md`: Usage instructions.
